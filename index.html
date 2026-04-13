@@ -1248,7 +1248,7 @@ th.sortable.sort-active .sort-arrow { color: var(--lux-gold); font-weight: 700; 
         <button onclick="exportData()">匯出</button>
         <button onclick="document.getElementById('importFile').click()">匯入</button>
         <button onclick="showRestoreDialog()" title="從自動快照還原台股資料">還原</button>
-        <button onclick="if(confirm('確定清除本機所有資料？清除後此裝置的資料將無法復原。')){localStorage.removeItem('finTracker');location.reload();}" style="background:rgba(200,50,50,.3);border-color:rgba(200,100,100,.5)" title="清除此裝置的所有資料">清除</button>
+        <button onclick="if(confirm('確定清除本機所有資料？清除後此裝置的資料將無法復原。')){localStorage.clear();location.reload();}" style="background:rgba(200,50,50,.3);border-color:rgba(200,100,100,.5)" title="清除此裝置的所有資料">清除</button>
         <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
     </div>
 </div>
@@ -1582,61 +1582,7 @@ function renderIncomeExpense(section) {
     var cats = showArchived ? allCats : allCats.filter(function(c){ return !isCatArchived(section, c); });
     var container = document.getElementById('tab-' + section);
 
-    // 摘要表格（可開合，預設為合）
-    var ovOpen = !!_overviewOpen[section];
-    var ovArrow = ovOpen ? '▼' : '▶';
-    var html = '<div style="background:var(--card);border-radius:var(--radius);margin-bottom:10px;box-shadow:var(--shadow);overflow:hidden">';
-    html += '<div onclick="toggleOverview(\'' + section + '\')" style="cursor:pointer;user-select:none;padding:12px 18px;font-weight:800;font-size:13px;letter-spacing:1px;text-transform:uppercase;color:var(--lux-navy);background:' + (ovOpen ? '#FFFBF0' : 'var(--card)') + ';border-bottom:' + (ovOpen ? '1px solid var(--border)' : 'none') + '">' + ovArrow + ' 總覽</div>';
-    if (!ovOpen) {
-        html += '</div>';
-    } else {
-    html += '<div class="table-wrap"><table style="margin:0"><thead><tr>';
-    html += '<th style="text-align:left">項目</th>';
-    years.forEach(function(y) { html += '<th>' + y + '年</th>'; });
-    html += '<th>日均變動</th></tr></thead><tbody>';
-    // 總收入
-    html += '<tr><td style="font-weight:700">總收入</td>';
-    years.forEach(function(y) { html += '<td style="color:var(--green);font-weight:700">' + fmt(sumYear('income', y)) + '</td>'; });
-    if (years.length >= 2) {
-        var _iCur = sumYear('income', years[years.length-1]), _iPrev = sumYear('income', years[years.length-2]);
-        var _iCY = parseInt(years[years.length-1])+1911, _iPY = parseInt(years[years.length-2])+1911;
-        var _now = new Date();
-        var _iCD = (_iCY === _now.getFullYear()) ? dayOfYear(_now) : daysInYear(_iCY);
-        var _iPD = daysInYear(_iPY);
-        var _iRate = _iPrev > 0 ? (((_iCur/_iCD)/(_iPrev/_iPD))-1)*100 : null;
-        html += '<td class="rate-cell ' + rateClass(_iRate) + '">' + fmtRate(_iRate) + '</td>';
-    } else { html += '<td>-</td>'; }
-    html += '</tr>';
-    // 總支出
-    html += '<tr><td style="font-weight:700">總支出</td>';
-    years.forEach(function(y) { html += '<td style="color:var(--red);font-weight:700">' + fmt(sumYear('expense', y)) + '</td>'; });
-    if (years.length >= 2) {
-        var _eCur = sumYear('expense', years[years.length-1]), _ePrev = sumYear('expense', years[years.length-2]);
-        var _eCY = parseInt(years[years.length-1])+1911, _ePY = parseInt(years[years.length-2])+1911;
-        var _eCD = (_eCY === _now.getFullYear()) ? dayOfYear(_now) : daysInYear(_eCY);
-        var _ePD = daysInYear(_ePY);
-        var _eRate = _ePrev > 0 ? (((_eCur/_eCD)/(_ePrev/_ePD))-1)*100 : null;
-        html += '<td class="rate-cell ' + rateClass(_eRate) + '">' + fmtRate(_eRate) + '</td>';
-    } else { html += '<td>-</td>'; }
-    html += '</tr>';
-    // 盈餘
-    html += '<tr style="border-top:2px solid var(--border)"><td style="font-weight:700">盈餘</td>';
-    years.forEach(function(y) {
-        var surplus = sumYear('income', y) - sumYear('expense', y);
-        html += '<td style="font-weight:700" class="' + (surplus>=0?'pos':'neg') + '">' + fmt(surplus) + '</td>';
-    });
-    if (years.length >= 2) {
-        var _sCur = sumYear('income', years[years.length-1]) - sumYear('expense', years[years.length-1]);
-        var _sPrev = sumYear('income', years[years.length-2]) - sumYear('expense', years[years.length-2]);
-        var _sCD = (_iCY === _now.getFullYear()) ? dayOfYear(_now) : daysInYear(_iCY);
-        var _sPD = daysInYear(_iPY);
-        var _sRate = _sPrev > 0 ? (((_sCur/_sCD)/(_sPrev/_sPD))-1)*100 : null;
-        html += '<td class="rate-cell ' + rateClass(_sRate) + '">' + fmtRate(_sRate) + '</td>';
-    } else { html += '<td>-</td>'; }
-    html += '</tr>';
-    html += '</tbody></table></div>';
-    html += '</div>';
-    } // end else (overview open)
+    var html = '';
 
     // 工具列
     html += '<div class="toolbar">';
@@ -1958,17 +1904,21 @@ function manageYears() {
 
 function managePassiveSources() {
     var sources = getSourceNames();
-    if (sources.length === 0) { toast('尚無來源'); return; }
-    var html = '<div style="display:flex;flex-direction:column;gap:8px">';
-    sources.forEach(function(s) {
-        html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg);border-radius:var(--radius-xs)">';
-        html += '<span style="flex:1;font-weight:600">' + esc(s) + '</span>';
-        html += '<button onclick="renamePassiveSource(\'' + esc(s) + '\')" style="padding:4px 10px;font-size:12px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--card);cursor:pointer"><i class="ti ti-pencil"></i> 重命名</button>';
-        html += '<button onclick="deletePassiveSource(\'' + esc(s) + '\')" style="padding:4px 10px;font-size:12px;border:1px solid rgba(200,50,50,.3);border-radius:var(--radius-xs);background:rgba(200,50,50,.08);color:var(--red);cursor:pointer"><i class="ti ti-trash"></i> 刪除</button>';
-        html += '</div>';
-    });
-    html += '</div>';
-    showAlert(html, '管理被動收入來源');
+    var ov = document.createElement('div');
+    ov.className = 'overlay';
+    var rows = sources.map(function(s) {
+        return '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">' +
+            '<span style="font-size:14px">' + esc(s) + '</span>' +
+            '<div style="display:flex;gap:6px">' +
+                '<button onclick="this.closest(\'.overlay\').remove();renamePassiveSource(\'' + esc(s) + '\')" style="padding:4px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;cursor:pointer;background:var(--card);font-family:inherit"><i class="ti ti-pencil" style="font-size:13px"></i> 重命名</button>' +
+                '<button onclick="this.closest(\'.overlay\').remove();deletePassiveSource(\'' + esc(s) + '\')" style="padding:4px 10px;border:none;border-radius:6px;font-size:13px;cursor:pointer;background:var(--red);color:white;font-family:inherit"><i class="ti ti-x" style="font-size:14px"></i></button>' +
+            '</div></div>';
+    }).join('');
+    if (sources.length === 0) rows = '<div style="padding:16px;text-align:center;color:var(--muted)">尚無來源</div>';
+    ov.innerHTML = '<div class="modal" style="max-height:80vh;overflow-y:auto"><h3>管理被動收入來源</h3>' + rows +
+        '<div style="margin-top:12px"><button onclick="this.closest(\'.overlay\').remove();addPassiveSource()" style="width:100%;padding:10px;border:none;border-radius:8px;background:var(--lux-navy);color:white;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">＋ 新增來源</button></div>' +
+        '<div style="margin-top:8px"><button onclick="this.closest(\'.overlay\').remove()" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--card);font-size:14px;cursor:pointer;font-family:inherit">關閉</button></div></div>';
+    document.body.appendChild(ov);
 }
 
 function renamePassiveSource(oldName) {
