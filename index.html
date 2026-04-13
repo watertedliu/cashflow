@@ -698,12 +698,17 @@ th.sortable.sort-active { color: var(--lux-navy); }
 th.sortable.sort-active .sort-arrow { color: var(--lux-gold); font-weight: 700; }
 
 @media (max-width: 600px) {
+    html, body { overflow-x: hidden; }
+    .header { padding: 6px 12px; }
+    .header h1 { font-size: 20px; letter-spacing: 2px; }
+    .header-btns { gap: 5px; }
+    .header-btns button { padding: 5px 10px; font-size: 11px; }
     .summary-cards { grid-template-columns: repeat(3, 1fr); }
     .stock-summary { grid-template-columns: repeat(2, 1fr); }
     .s-card .value { font-size: 18px; }
     .container { padding: 10px; }
-    table { font-size: 13px; }
-    thead th, tbody td, tfoot td { padding: 6px 8px; }
+    table { font-size: 12px; }
+    thead th, tbody td, tfoot td { padding: 5px 4px; }
     .tab-btn { padding: 10px 16px; font-size: 13px; }
     .tab-bar-inner { grid-template-columns: repeat(3, 1fr); }
     .asset-acc-row { flex-wrap: wrap; }
