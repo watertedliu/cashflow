@@ -3690,7 +3690,7 @@ function renderStockHoldings() {
     html += '<div class="stock-refresh-bar">';
     html += '<button class="btn-refresh" id="btn-fetch-price" onclick="refreshPrices()"><i class="ti ti-antenna-bars-5"></i> 更新股價</button>';
     html += '<button class="btn-refresh" style="background:var(--lux-navy)" onclick="addHolding()">＋ 新增持股</button>';
-    html += '<button class="btn-refresh" style="background:rgba(255,255,255,.1);border:1px solid var(--border)" onclick="toggleStockColumn()"><i class="ti ti-columns"></i> 欄位</button>';
+    html += '<button class="btn-refresh" style="background:var(--card);color:var(--lux-navy);border:1px solid var(--border)" onclick="toggleStockColumn()"><i class="ti ti-columns"></i> 欄位</button>';
     if (stockData.lastUpdate) {
         html += '<span class="last-update">最後更新：' + esc(stockData.lastUpdate) + '</span>';
     }
