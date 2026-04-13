@@ -1717,6 +1717,7 @@ function renderPassive() {
     html += '</select>';
     html += '<button class="btn-add" onclick="addYear()">＋ 新增年份</button>';
     html += '<button class="btn-add" onclick="addPassiveSource()">＋ 新增來源</button>';
+    html += '<button onclick="managePassiveSources()"><i class="ti ti-settings"></i> 管理來源</button>';
     html += '<button onclick="manageRecurring()" style="margin-left:auto"><i class="ti ti-repeat"></i> 定期收入管理</button>';
     html += '</div>';
 
@@ -1953,6 +1954,47 @@ function manageYears() {
         '<div style="margin-top:8px"><button onclick="this.closest(\'.overlay\').remove()" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--card);font-size:14px;cursor:pointer;font-family:inherit">關閉</button></div></div>';
     document.body.appendChild(ov);
     // 已移除點空白關閉行為（避免誤觸）
+}
+
+function managePassiveSources() {
+    var sources = getSourceNames();
+    if (sources.length === 0) { toast('尚無來源'); return; }
+    var html = '<div style="display:flex;flex-direction:column;gap:8px">';
+    sources.forEach(function(s) {
+        html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg);border-radius:var(--radius-xs)">';
+        html += '<span style="flex:1;font-weight:600">' + esc(s) + '</span>';
+        html += '<button onclick="renamePassiveSource(\'' + esc(s) + '\')" style="padding:4px 10px;font-size:12px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--card);cursor:pointer"><i class="ti ti-pencil"></i> 重命名</button>';
+        html += '<button onclick="deletePassiveSource(\'' + esc(s) + '\')" style="padding:4px 10px;font-size:12px;border:1px solid rgba(200,50,50,.3);border-radius:var(--radius-xs);background:rgba(200,50,50,.08);color:var(--red);cursor:pointer"><i class="ti ti-trash"></i> 刪除</button>';
+        html += '</div>';
+    });
+    html += '</div>';
+    showAlert(html, '管理被動收入來源');
+}
+
+function renamePassiveSource(oldName) {
+    showModal('重命名來源', '新名稱', oldName, function(newName) {
+        if (!newName || newName === oldName) return;
+        var names = getSourceNames();
+        if (names.indexOf(newName) >= 0) { toast('名稱已存在'); return; }
+        DATA.settings.passiveSources.forEach(function(s, i) {
+            var n = typeof s === 'string' ? s : s.name;
+            if (n === oldName) {
+                if (typeof s === 'string') DATA.settings.passiveSources[i] = newName;
+                else s.name = newName;
+            }
+        });
+        DATA.settings.years.forEach(function(y) {
+            if (DATA.passive[y] && DATA.passive[y][oldName]) {
+                DATA.passive[y][newName] = DATA.passive[y][oldName];
+                delete DATA.passive[y][oldName];
+            }
+        });
+        (DATA.recurring || []).forEach(function(r) {
+            if (r.source === oldName) r.source = newName;
+        });
+        saveData();
+        render();
+    });
 }
 
 function addPassiveSource() {
@@ -2518,6 +2560,45 @@ var STOCK_SNAPSHOT_KEY = 'finTracker_stock_snapshots'; // 輪替快照：最多�
 var STOCK_LAST_COUNT_KEY = 'finTracker_stock_lastCount'; // 上次啟動時的筆數
 var stockData = null;
 var stockSubTab = 'holdings'; // holdings | dividend | pledge
+
+// 台股持股欄位可見性
+var STOCK_COLUMNS = [
+    { key: 'shares',   label: '股數',     default: true },
+    { key: 'cost',     label: '買入均價', default: true },
+    { key: 'price',    label: '現價',     default: true },
+    { key: 'totalCost',label: '投入成本', default: false },
+    { key: 'market',   label: '現值',     default: true },
+    { key: 'pl',       label: '損益',     default: true },
+    { key: 'rate',     label: '報酬率',   default: true },
+    { key: 'dayPL',    label: '今日損益', default: false },
+    { key: 'weight',   label: '佔比',     default: false }
+];
+var _stockColVisible = null;
+function getStockColVisible() {
+    if (_stockColVisible) return _stockColVisible;
+    try { _stockColVisible = JSON.parse(localStorage.getItem('stockColVisible')); } catch(e) {}
+    if (!_stockColVisible) {
+        _stockColVisible = {};
+        STOCK_COLUMNS.forEach(function(c) { _stockColVisible[c.key] = c.default; });
+    }
+    return _stockColVisible;
+}
+function saveStockColVisible() {
+    localStorage.setItem('stockColVisible', JSON.stringify(_stockColVisible));
+}
+function toggleStockColumn() {
+    var vis = getStockColVisible();
+    var html = '<div style="display:flex;flex-direction:column;gap:6px">';
+    STOCK_COLUMNS.forEach(function(c) {
+        var checked = vis[c.key] !== false ? ' checked' : '';
+        html += '<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--bg);border-radius:var(--radius-xs);cursor:pointer">';
+        html += '<input type="checkbox" onchange="getStockColVisible()[\'' + c.key + '\']=this.checked;saveStockColVisible()" ' + checked + '>';
+        html += '<span>' + c.label + '</span></label>';
+    });
+    html += '</div>';
+    html += '<div style="margin-top:12px;text-align:center"><button onclick="renderStock();document.querySelector(\'.modal-overlay\').remove()" style="padding:6px 20px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--lux-navy);color:#fff;cursor:pointer">套用</button></div>';
+    showAlert(html, '自訂顯示欄位');
+}
 
 // 讀取輪替快照清單（陣列，每筆 {time, data}）
 function getSnapshots() {
@@ -3660,6 +3741,7 @@ function renderStockHoldings() {
     html += '<div class="stock-refresh-bar">';
     html += '<button class="btn-refresh" id="btn-fetch-price" onclick="refreshPrices()"><i class="ti ti-antenna-bars-5"></i> 更新股價</button>';
     html += '<button class="btn-refresh" style="background:var(--lux-navy)" onclick="addHolding()">＋ 新增持股</button>';
+    html += '<button class="btn-refresh" style="background:rgba(255,255,255,.1);border:1px solid var(--border)" onclick="toggleStockColumn()"><i class="ti ti-columns"></i> 欄位</button>';
     if (stockData.lastUpdate) {
         html += '<span class="last-update">最後更新：' + esc(stockData.lastUpdate) + '</span>';
     }
@@ -3703,8 +3785,19 @@ function renderStockHoldings() {
         return html;
     }
 
+    var vis = getStockColVisible();
     html += '<div class="table-wrap"><table class="stock-table"><thead><tr>';
-    html += '<th>股票</th><th>股數</th><th>買入均價</th><th>現價</th><th>投入成本</th><th>現值</th><th>損益</th><th>報酬率</th><th>今日損益</th><th>佔比</th><th></th>';
+    html += '<th>股票</th>';
+    if (vis.shares) html += '<th>股數</th>';
+    if (vis.cost) html += '<th>買入均價</th>';
+    if (vis.price) html += '<th>現價</th>';
+    if (vis.totalCost) html += '<th>投入成本</th>';
+    if (vis.market) html += '<th>現值</th>';
+    if (vis.pl) html += '<th>損益</th>';
+    if (vis.rate) html += '<th>報酬率</th>';
+    if (vis.dayPL) html += '<th>今日損益</th>';
+    if (vis.weight) html += '<th>佔比</th>';
+    html += '<th></th>';
     html += '</tr></thead><tbody>';
 
     stockData.holdings.forEach(function(h, idx) {
@@ -3718,18 +3811,22 @@ function renderStockHoldings() {
 
         html += '<tr>';
         html += '<td class="stock-name-cell" style="cursor:pointer" onclick="editHolding(' + idx + ')">' + esc(h.id) + '<br><span style="font-size:12px;color:var(--muted);font-weight:400">' + esc(h.name) + '</span></td>';
-        var pledgedShares = 0;
-        if (stockData.pledges) stockData.pledges.forEach(function(p){ if (p.stockId === h.id) pledgedShares += p.shares; });
-        html += '<td>' + fmt(h.shares) + (pledgedShares > 0 ? '<br><span style="font-size:11px;color:var(--muted)">質押 ' + fmt(pledgedShares) + '</span>' : '') + '</td>';
-        html += '<td>' + h.cost.toFixed(2) + '</td>';
-        html += '<td>' + (curPrice ? curPrice.toFixed(2) : '<span style="color:var(--muted)">-</span>') + '</td>';
-        html += '<td>' + fmt(cost) + '</td>';
-        html += '<td style="font-weight:600">' + (market !== null ? fmt(market) : '-') + '</td>';
-        html += '<td class="' + (pl !== null ? (pl>=0?'pos':'neg') : '') + '" style="font-weight:600">' + (pl !== null ? (pl>=0?'+':'') + fmt(pl) : '-') + '</td>';
-        html += '<td class="rate-cell ' + rateClass(rate) + '">' + (rate !== null ? fmtRate(rate) : '-') + '</td>';
-        var dayPL = (p && p.change) ? h.shares * p.change : null;
-        html += '<td class="' + (dayPL !== null ? (dayPL>=0?'pos':'neg') : '') + '" style="font-weight:600">' + (dayPL !== null ? (dayPL>=0?'+':'') + fmt(dayPL) : '-') + '</td>';
-        html += '<td>' + (weight !== null ? weight.toFixed(1) + '%' : '-') + '</td>';
+        if (vis.shares) {
+            var pledgedShares = 0;
+            if (stockData.pledges) stockData.pledges.forEach(function(p){ if (p.stockId === h.id) pledgedShares += p.shares; });
+            html += '<td>' + fmt(h.shares) + (pledgedShares > 0 ? '<br><span style="font-size:11px;color:var(--muted)">質押 ' + fmt(pledgedShares) + '</span>' : '') + '</td>';
+        }
+        if (vis.cost) html += '<td>' + h.cost.toFixed(2) + '</td>';
+        if (vis.price) html += '<td>' + (curPrice ? curPrice.toFixed(2) : '<span style="color:var(--muted)">-</span>') + '</td>';
+        if (vis.totalCost) html += '<td>' + fmt(cost) + '</td>';
+        if (vis.market) html += '<td style="font-weight:600">' + (market !== null ? fmt(market) : '-') + '</td>';
+        if (vis.pl) html += '<td class="' + (pl !== null ? (pl>=0?'pos':'neg') : '') + '" style="font-weight:600">' + (pl !== null ? (pl>=0?'+':'') + fmt(pl) : '-') + '</td>';
+        if (vis.rate) html += '<td class="rate-cell ' + rateClass(rate) + '">' + (rate !== null ? fmtRate(rate) : '-') + '</td>';
+        if (vis.dayPL) {
+            var dayPL = (p && p.change) ? h.shares * p.change : null;
+            html += '<td class="' + (dayPL !== null ? (dayPL>=0?'pos':'neg') : '') + '" style="font-weight:600">' + (dayPL !== null ? (dayPL>=0?'+':'') + fmt(dayPL) : '-') + '</td>';
+        }
+        if (vis.weight) html += '<td>' + (weight !== null ? weight.toFixed(1) + '%' : '-') + '</td>';
         html += '<td><button class="btn-del" onclick="deleteHolding(' + idx + ')"><i class="ti ti-x" style="font-size:14px"></i></button></td>';
         html += '</tr>';
     });
