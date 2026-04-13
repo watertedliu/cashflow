@@ -699,6 +699,7 @@ th.sortable.sort-active .sort-arrow { color: var(--lux-gold); font-weight: 700; 
 
 @media (max-width: 600px) {
     html, body { overflow-x: hidden; }
+    body { padding-top: 155px; }
     .header { padding: 6px 12px; }
     .header h1 { font-size: 20px; letter-spacing: 2px; }
     .header-btns { gap: 5px; }
@@ -3690,7 +3691,7 @@ function renderStockHoldings() {
     html += '<div class="stock-refresh-bar">';
     html += '<button class="btn-refresh" id="btn-fetch-price" onclick="refreshPrices()"><i class="ti ti-antenna-bars-5"></i> 更新股價</button>';
     html += '<button class="btn-refresh" style="background:var(--lux-navy)" onclick="addHolding()">＋ 新增持股</button>';
-    html += '<button class="btn-refresh" style="background:var(--card);color:var(--lux-navy);border:1px solid var(--border)" onclick="toggleStockColumn()"><i class="ti ti-columns"></i> 欄位</button>';
+    html += '<button class="btn-refresh" style="background:linear-gradient(135deg,#0f2847 0%,#1a3a5c 50%,#2a5a8c 100%);border:1px solid var(--lux-gold)" onclick="toggleStockColumn()"><i class="ti ti-columns"></i> 欄位</button>';
     if (stockData.lastUpdate) {
         html += '<span class="last-update">最後更新：' + esc(stockData.lastUpdate) + '</span>';
     }
