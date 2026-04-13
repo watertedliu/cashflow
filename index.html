@@ -1248,7 +1248,7 @@ th.sortable.sort-active .sort-arrow { color: var(--lux-gold); font-weight: 700; 
         <button onclick="exportData()">匯出</button>
         <button onclick="document.getElementById('importFile').click()">匯入</button>
         <button onclick="showRestoreDialog()" title="從自動快照還原台股資料">還原</button>
-        <button onclick="if(confirm('確定清除本機所有資料？清除後此裝置的資料將無法復原。')){localStorage.clear();location.reload();}" style="background:rgba(200,50,50,.3);border-color:rgba(200,100,100,.5)" title="清除此裝置的所有資料">清除</button>
+        <button onclick="showConfirm2('確定清除本機所有資料？\n清除後此裝置的資料將無法復原。',function(){localStorage.clear();location.reload();},null,{title:'清除資料',okText:'確定清除',okStyle:'background:var(--red)'})" style="background:rgba(200,50,50,.3);border-color:rgba(200,100,100,.5)" title="清除此裝置的所有資料">清除</button>
         <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
     </div>
 </div>
