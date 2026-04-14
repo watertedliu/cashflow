@@ -3362,6 +3362,35 @@ function _applyDividendToPassive(dateStr, cash, delta) {
     return true;
 }
 
+// 將金額加到/減去「收入→股利」分類（年度累積）
+// 若「股利」分類不存在，自動建立
+function _applyDividendToIncome(dateStr, cash, delta) {
+    if (!cash || cash <= 0) return false;
+    var d = _parseDividendDate(dateStr);
+    if (!d) return false;
+    var cats = DATA.settings.incomeCategories || [];
+    var hasDiv = cats.some(function(c){ return (typeof c === 'string' ? c : c.name) === '股利'; });
+    if (!hasDiv) {
+        DATA.settings.incomeCategories.push('股利');
+        (DATA.settings.years || []).forEach(function(y){
+            if (!DATA.income[y]) DATA.income[y] = {};
+            if (DATA.income[y]['股利'] === undefined) DATA.income[y]['股利'] = 0;
+        });
+    }
+    if (!DATA.income[d.rocYear]) DATA.income[d.rocYear] = {};
+    var cur = DATA.income[d.rocYear]['股利'] || 0;
+    var next = cur + delta * cash;
+    if (next < 0) {
+        console.warn('[_applyDividendToIncome] 扣除會使收入股利變負，已停止同步。' +
+                     '民國 ' + d.rocYear + ' 當前:' + cur + '，欲扣除:' + cash);
+        toast('<i class="ti ti-alert-triangle"></i> 收入股利已被手動調整，此次未同步反向扣除（避免數字錯亂）', true);
+        return false;
+    }
+    DATA.income[d.rocYear]['股利'] = next;
+    saveData();
+    return true;
+}
+
 function addDividend() {
     var options = stockData.holdings.map(function(h) {
         return '<option value="' + esc(h.id) + '">' + esc(h.id + ' ' + h.name) + '</option>';
@@ -3402,12 +3431,16 @@ function addDividend() {
         // 同步加到被動收入（只同步現金股利，股票股利不計入）
         var synced = _applyDividendToPassive(date, cash, +1);
         if (synced) newRecord._syncedToPassive = true;
+        // 同步加到「收入→股利」分類
+        var syncedInc = _applyDividendToIncome(date, cash, +1);
+        if (syncedInc) newRecord._syncedToIncome = true;
         stockData.dividends.push(newRecord);
         stockData.dividends.sort(function(a,b){ return b.date.localeCompare(a.date); });
         saveStockData();
         ov.remove();
         renderStock();
         if (currentTab === 'passive') renderPassive();
+        if (currentTab === 'income') renderIncomeExpense('income');
         if (synced) {
             var d = _parseDividendDate(date);
             toast('已新增股利，並同步至被動收入 ' + d.rocYear + '/' + d.month + ' 股利 +' + Math.round(cash).toLocaleString());
@@ -3422,15 +3455,20 @@ function deleteDividend(idx) {
     showConfirm('確定刪除此筆股利紀錄？', function() {
         var rec = stockData.dividends[idx];
         var wasSynced = rec && rec._syncedToPassive && rec.cash > 0;
+        var wasSyncedInc = rec && rec._syncedToIncome && rec.cash > 0;
         var reverted = false;
         // 只有有同步標記的才反向扣除被動收入，避免誤動使用者手動填的數字
         if (wasSynced) {
             reverted = _applyDividendToPassive(rec.date, rec.cash, -1);
         }
+        if (wasSyncedInc) {
+            _applyDividendToIncome(rec.date, rec.cash, -1);
+        }
         stockData.dividends.splice(idx, 1);
         saveStockData();
         renderStock();
         if (currentTab === 'passive') renderPassive();
+        if (currentTab === 'income') renderIncomeExpense('income');
         if (reverted) {
             var d = _parseDividendDate(rec.date);
             toast('已刪除股利，並從被動收入 ' + d.rocYear + '/' + d.month + ' 股利 -' + Math.round(rec.cash).toLocaleString());
@@ -3927,7 +3965,7 @@ function renderStockHoldings() {
         var market = p ? h.shares * p.price : cost;
         totalCost += cost;
         totalMarket += market;
-        if (p && p.change) todayPL += h.shares * p.change;
+        if (p && typeof p.change === 'number') todayPL += h.shares * p.change;
     });
     var totalPL = totalMarket - totalCost;
     var totalRate = totalCost > 0 ? (totalPL / totalCost) * 100 : 0;
@@ -3994,7 +4032,7 @@ function renderStockHoldings() {
         if (vis.pl) html += '<td class="' + (pl !== null ? (pl>=0?'pos':'neg') : '') + '" style="font-weight:600">' + (pl !== null ? (pl>=0?'+':'') + fmt(pl) : '-') + '</td>';
         if (vis.rate) html += '<td class="rate-cell ' + rateClass(rate) + '">' + (rate !== null ? fmtRate(rate) : '-') + '</td>';
         if (vis.dayPL) {
-            var dayPL = (p && p.change) ? h.shares * p.change : null;
+            var dayPL = (p && typeof p.change === 'number') ? h.shares * p.change : null;
             html += '<td class="' + (dayPL !== null ? (dayPL>=0?'pos':'neg') : '') + '" style="font-weight:600">' + (dayPL !== null ? (dayPL>=0?'+':'') + fmt(dayPL) : '-') + '</td>';
         }
         if (vis.weight) html += '<td>' + (weight !== null ? weight.toFixed(1) + '%' : '-') + '</td>';
@@ -4035,6 +4073,7 @@ function renderStockDividend() {
     html += '<button class="btn-refresh" style="background:var(--lux-navy)" onclick="addDividend()">＋ 新增股利</button>';
     stockData.holdings.forEach(function(h) {
         var t = totals[h.id];
+        if (t.sum <= 0) return;
         html += '<div style="padding:8px 14px;background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);font-size:13px">';
         html += '<div style="color:var(--muted);font-size:11px">' + esc(t.label) + ' 累積股利</div>';
         html += '<div style="font-weight:700;color:var(--lux-navy);font-size:15px">$' + fmt(t.sum) + '</div>';
