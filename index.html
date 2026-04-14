@@ -3243,15 +3243,16 @@ function editHolding(idx) {
         '<input type="text" id="edit-stock-name" value="' + esc(h.name) + '">' +
         '<label style="font-size:12px;color:var(--muted)">持有股數</label>' +
         '<input type="number" id="edit-stock-shares" value="' + h.shares + '">' +
-        '<label style="font-size:12px;color:var(--muted)">買入均價</label>' +
-        '<input type="number" id="edit-stock-cost" value="' + h.cost + '" step="0.01">' +
+        '<label style="font-size:12px;color:var(--muted)">付出成本</label>' +
+        '<input type="number" id="edit-stock-cost" value="' + Math.round(h.shares * h.cost) + '" step="1">' +
         '<div class="modal-btns"><button onclick="this.closest(\'.overlay\').remove()">取消</button>' +
         '<button class="btn-primary" id="edit-stock-save">儲存</button></div></div>';
     document.body.appendChild(ov);
     document.getElementById('edit-stock-save').onclick = function() {
         h.name = document.getElementById('edit-stock-name').value.trim() || h.name;
         h.shares = parseInt(document.getElementById('edit-stock-shares').value) || h.shares;
-        h.cost = parseFloat(document.getElementById('edit-stock-cost').value) || h.cost;
+        var totalCost = parseFloat(document.getElementById('edit-stock-cost').value);
+        if (!isNaN(totalCost) && h.shares > 0) h.cost = totalCost / h.shares;
         saveStockData();
         ov.remove();
         renderStock();
@@ -4691,8 +4692,8 @@ function renderAssets() {
     html += '<div class="nw-trend-title">';
     html += '<span><i class="ti ti-trending-up"></i> 淨資產趨勢</span>';
     html += '<span class="nw-trend-range">';
-    html += '<button onclick="renderAssetTrendChart(6)" class="nw-range-btn">近 6 月</button>';
-    html += '<button onclick="renderAssetTrendChart(12)" class="nw-range-btn active">近 12 月</button>';
+    html += '<button onclick="renderAssetTrendChart(6)" class="nw-range-btn active">近 6 月</button>';
+    html += '<button onclick="renderAssetTrendChart(12)" class="nw-range-btn">近 12 月</button>';
     html += '<button onclick="renderAssetTrendChart(24)" class="nw-range-btn">近 24 月</button>';
     html += '<button onclick="renderAssetTrendChart(0)" class="nw-range-btn">全部</button>';
     html += '<button onclick="showNwTrendCustomRange()" class="nw-range-btn">自訂</button>';
@@ -4790,7 +4791,7 @@ function manualRefreshMarket() {
 }
 
 // ── 折線圖 ──
-var _nwTrendMonths = 12; // 預設顯示近 12 個月
+var _nwTrendMonths = 6; // 預設顯示近 6 個月
 function renderAssetTrendChart(rangeMonths) {
     if (rangeMonths !== undefined) _nwTrendMonths = rangeMonths;
     // 更新按鈕 active 狀態
@@ -4806,35 +4807,66 @@ function renderAssetTrendChart(rangeMonths) {
     });
     var canvas = document.getElementById('nw-trend-chart');
     if (!canvas || typeof Chart === 'undefined') return;
-    var hist = (DATA.assets.history || []).slice();
-    // 每月最後一筆
-    var byMonth = {};
-    hist.forEach(function(h) {
-        var m = h.date.slice(0,7);
-        byMonth[m] = h; // 後蓋前 = 當月最後一筆
-    });
-    var months = Object.keys(byMonth).sort();
-    if (_nwTrendMonths === -1 && _nwTrendCustomStart && _nwTrendCustomEnd) {
-        // 自訂範圍
-        months = months.filter(function(m){ return m >= _nwTrendCustomStart && m <= _nwTrendCustomEnd; });
-    } else if (_nwTrendMonths > 0) {
-        months = months.slice(-_nwTrendMonths);
+    var hist = (DATA.assets.history || []).slice().sort(function(a,b){ return a.date < b.date ? -1 : 1; });
+
+    // 依範圍決定聚合粒度：近 6 月→日、近 12 月→週、近 24 月/全部→月
+    var granularity = 'month';
+    if (_nwTrendMonths === 6) granularity = 'day';
+    else if (_nwTrendMonths === 12) granularity = 'week';
+
+    // ISO 週鍵 YYYY-Www（用週一當基準）
+    function _weekKey(dateStr) {
+        var d = new Date(dateStr);
+        var day = (d.getDay() + 6) % 7; // 週一=0
+        d.setDate(d.getDate() - day);
+        var y = d.getFullYear();
+        var m = String(d.getMonth()+1).padStart(2,'0');
+        var dd = String(d.getDate()).padStart(2,'0');
+        return y + '-' + m + '-' + dd; // 週一的日期當標籤
     }
-    var labels = months;
-    var values = months.map(function(m){ return byMonth[m].netWorth; });
+
+    var bucket = {};
+    hist.forEach(function(h) {
+        var k;
+        if (granularity === 'day') k = h.date;
+        else if (granularity === 'week') k = _weekKey(h.date);
+        else k = h.date.slice(0,7);
+        bucket[k] = h; // 後蓋前 = 該桶最後一筆
+    });
+    var keys = Object.keys(bucket).sort();
+
+    if (_nwTrendMonths === -1 && _nwTrendCustomStart && _nwTrendCustomEnd) {
+        // 自訂範圍：維持月聚合（上面 granularity 預設 month）
+        keys = keys.filter(function(k){ return k >= _nwTrendCustomStart && k <= _nwTrendCustomEnd; });
+    } else if (_nwTrendMonths > 0) {
+        // 用日期範圍過濾而非直接 slice，確保日/週聚合也只顯示 N 個月內
+        var cutoff = new Date();
+        cutoff.setMonth(cutoff.getMonth() - _nwTrendMonths);
+        var cutoffStr = cutoff.getFullYear() + '-' +
+            String(cutoff.getMonth()+1).padStart(2,'0') + '-' +
+            String(cutoff.getDate()).padStart(2,'0');
+        keys = keys.filter(function(k){
+            var ref = (granularity === 'month') ? k + '-01' : k;
+            return ref >= cutoffStr;
+        });
+    }
+    var labels = keys;
+    var values = keys.map(function(k){ return bucket[k].netWorth; });
 
     // 統計列
     var statsEl = document.getElementById('nw-trend-stats');
     if (statsEl && values.length > 0) {
         var curNW = values[values.length - 1];
-        var allMonthsSorted = Object.keys(byMonth).sort();
         var now = new Date();
+        // 給「月/季/年」比較用：不受顯示粒度影響，一律按月最後一筆
+        var _byMonthForStats = {};
+        hist.forEach(function(h) { _byMonthForStats[h.date.slice(0,7)] = h; });
 
         // 輔助函式：找 N 個月前的淨資產
         function _getNwMonthsAgo(n) {
             var d = new Date(now.getFullYear(), now.getMonth() - n, 1);
             var ym = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
-            return byMonth[ym] ? byMonth[ym].netWorth : null;
+            return _byMonthForStats[ym] ? _byMonthForStats[ym].netWorth : null;
         }
         function _fmtChange(prev) {
             if (prev === null) return '<span style="color:var(--muted)">—</span>';
